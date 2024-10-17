@@ -1,0 +1,45 @@
+import java.io.*; 
+PImage img;
+
+void setup() {
+  String inputFolder = "";
+  String outputFolder = ""; 
+
+  File dir = new File(inputFolder);
+  File[] files = dir.listFiles();
+  
+  if (files != null) {
+    for (File file : files) {
+      if (file.isFile() && (file.getName().endsWith(".jpg") || file.getName().endsWith(".png"))) {
+        String imagePath = file.getAbsolutePath();
+        println("Processing: " + imagePath);
+        img = loadImage(imagePath);
+
+        if (img.width == 9 && img.height == 16) {
+          convertImageToDat(img, outputFolder + "/" + file.getName().replace(".jpg", ".dat").replace(".png", ".dat"));
+        } else {
+          println("Skipping " + file.getName() + " (incorrect size)");
+        }
+      }
+    }
+  }
+  
+  exit(); 
+}
+
+void convertImageToDat(PImage img, String outputFile) {
+  try {
+    FileOutputStream fos = new FileOutputStream(outputFile);
+    for (int y = 0; y < img.height; y++) {
+      for (int x = 0; x < img.width; x++) {
+        color c = img.get(x, y);
+        int brightness = int(brightness(c));
+        fos.write(brightness);
+      }
+    }
+    fos.close();
+    println("Saved to: " + outputFile);
+  } catch (IOException e) {
+    e.printStackTrace();
+  }
+}
