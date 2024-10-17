@@ -1,0 +1,65 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_IS31FL3731.h>
+#include <SPI.h>
+#include <SD.h>
+
+Adafruit_IS31FL3731 matrix = Adafruit_IS31FL3731(); 
+
+const int chipSelect = 10; 
+
+void setup() {
+  Serial.begin(115200); 
+  pinMode(chipSelect, OUTPUT);
+
+  if (!matrix.begin()) {
+    Serial.println("LED Matrix initialization failed!");
+    while (1);
+  }
+  Serial.println("LED Matrix initialized.");
+
+  if (!SD.begin(chipSelect)) {
+    Serial.println("SD card initialization failed!");
+    while (1);
+  }
+  Serial.println("SD card initialized.");
+}
+
+void loop() {
+  for (int frame = 1; frame <= 154; frame++) {
+    char filename[40];  
+    sprintf(filename, "layer_%d.dat", frame); 
+    displayFrameFromSD(filename);  
+    delay(100);  
+  }
+}
+
+void displayFrameFromSD(char *filename) {
+  File frameFile = SD.open(filename); 
+  if (frameFile) {
+    uint8_t pixelData[144]; 
+    frameFile.read(pixelData, 144); 
+    frameFile.close(); 
+
+    Serial.print("Frame: ");
+    Serial.println(filename);
+    Serial.print("First 10 pixel brightness: ");
+    for (int i = 0; i < 10; i++) {
+      Serial.print(pixelData[i]);
+      Serial.print(" ");
+    }
+    Serial.println();
+
+    matrix.fillScreen(0); 
+    for (int i = 0; i < 144; i++) {
+      uint8_t brightness = pixelData[i]; 
+      matrix.drawPixel(i % 16, i / 16, brightness); 
+    }
+
+    Serial.print("Displayed: ");
+    Serial.println(filename); 
+  } else {
+    Serial.print("Failed to open file: ");
+    Serial.println(filename); 
+  }
+}
