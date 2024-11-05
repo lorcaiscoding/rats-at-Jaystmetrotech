@@ -3,63 +3,113 @@
 #include <Adafruit_IS31FL3731.h>
 #include <SPI.h>
 #include <SD.h>
+#include <DFRobotDFPlayerMini.h>
 
-Adafruit_IS31FL3731 matrix = Adafruit_IS31FL3731(); 
+Adafruit_IS31FL3731 matrix = Adafruit_IS31FL3731();
+DFRobotDFPlayerMini mp3Player;
 
-const int chipSelect = 10; 
+const int chipSelect = 10;
+File frameFile;
+
+const uint8_t PROGMEM gamma8[] = {
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
+  2,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,
+  5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,  9,  9,  9, 10,
+  10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
+  17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
+  25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
+  37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
+  51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
+  69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
+  90, 92, 93, 95, 96, 98, 99, 101, 102, 104, 105, 107, 109, 110, 112, 114,
+  115, 117, 119, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 138, 140, 142,
+  144, 146, 148, 150, 152, 154, 156, 158, 160, 162, 164, 167, 169, 171, 173, 175,
+  177, 180, 182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213,
+  215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
+};
+
+unsigned long previousFrameTime = 0;  
+unsigned long frameInterval = 100;    
+
+unsigned long previousAudioTime = 0;  
+unsigned long audioInterval = 30000;  
 
 void setup() {
-  Serial.begin(115200); 
-  pinMode(chipSelect, OUTPUT);
+  Serial.begin(115200);
+  Serial1.begin(9600);
 
+  
+  Serial.println("Initializing DFPlayer...");
+  if (!mp3Player.begin(Serial1)) {
+    Serial.println("DFPlayer Mini initialization failed!");
+  } else {
+    Serial.println("DFPlayer Mini initialized.");
+    mp3Player.volume(30);  
+  }
+
+  Serial.println("Initializing LED Matrix...");
   if (!matrix.begin()) {
     Serial.println("LED Matrix initialization failed!");
     while (1);
   }
   Serial.println("LED Matrix initialized.");
 
+  Serial.println("Initializing SD Card...");
   if (!SD.begin(chipSelect)) {
     Serial.println("SD card initialization failed!");
-    while (1);
+  } else {
+    Serial.println("SD card initialized successfully.");
+
+    if (SD.exists("all_layers.dat")) {
+      frameFile = SD.open("all_layers.dat"); 
+      if (!frameFile) {
+        Serial.println("Failed to open all_layers.dat!");
+        while (1);
+      } else {
+        Serial.println("all_layers.dat opened successfully.");
+      }
+    } else {
+      Serial.println("File all_layers.dat does not exist!");
+      while (1);
+    }
   }
-  Serial.println("SD card initialized.");
 }
 
 void loop() {
-  for (int frame = 1; frame <= 154; frame++) {
-    char filename[40];  
-    sprintf(filename, "layer_%d.dat", frame); 
-    displayFrameFromSD(filename);  
-    delay(100);  
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousFrameTime >= frameInterval) {
+    previousFrameTime = currentMillis;
+    if (frameFile.available()) {
+      displayNextFrame();
+    } else {
+      frameFile.seek(0);  
+    }
+  }
+
+  if (mp3Player.readState() != 0 && (currentMillis - previousAudioTime >= audioInterval)) {
+    previousAudioTime = currentMillis;
+    mp3Player.play(1);
+    audioInterval = random(30000);  
   }
 }
 
-void displayFrameFromSD(char *filename) {
-  File frameFile = SD.open(filename); 
-  if (frameFile) {
-    uint8_t pixelData[144]; 
-    frameFile.read(pixelData, 144); 
-    frameFile.close(); 
+void displayNextFrame() {
+  uint8_t pixelData[144];  
+  if (frameFile.read(pixelData, 144) == 144) {  
+    matrix.fillScreen(0);  
 
-    Serial.print("Frame: ");
-    Serial.println(filename);
-    Serial.print("First 10 pixel brightness: ");
-    for (int i = 0; i < 10; i++) {
-      Serial.print(pixelData[i]);
-      Serial.print(" ");
+    for (uint8_t y = 0; y < 9; y++) {
+      for (uint8_t x = 0; x < 16; x++) {
+        int i = y * 16 + x;
+        uint8_t brightness = pixelData[i];
+        brightness = pgm_read_byte(&gamma8[brightness]);  
+        matrix.drawPixel(x, y, brightness);
+      }
     }
-    Serial.println();
-
-    matrix.fillScreen(0); 
-    for (int i = 0; i < 144; i++) {
-      uint8_t brightness = pixelData[i]; 
-      matrix.drawPixel(i % 16, i / 16, brightness); 
-    }
-
-    Serial.print("Displayed: ");
-    Serial.println(filename); 
   } else {
-    Serial.print("Failed to open file: ");
-    Serial.println(filename); 
+    Serial.println("Frame data incomplete!");
+    frameFile.seek(0);  
   }
-}
